@@ -1,0 +1,6 @@
+venv/
+__pycache__/
+*.pyc
+archive_repository.db
+archive_repository.db-wal
+archive_repository.db-shm

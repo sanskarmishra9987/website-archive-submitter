@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Website Archive Submitter</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #171a23; --panel2: #1e2230; --border: #2a2f3f;
+    --text: #e6e8ef; --muted: #8b90a3; --accent: #6c7bff; --green: #38d996;
+    --red: #ff6b6b; --amber: #ffb84d;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family: -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { padding: 20px 28px; border-bottom: 1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+  header h1 { font-size: 18px; margin:0; }
+  header .sub { color:var(--muted); font-size: 12px; margin-top:2px; }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 28px 60px; }
+
+  .stats { display:grid; grid-template-columns: repeat(6, 1fr); gap:12px; margin-bottom:24px; }
+  .stat { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px 16px; }
+  .stat .n { font-size:22px; font-weight:700; }
+  .stat .l { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-top:2px; }
+
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:20px; }
+  .card h2 { font-size:14px; margin:0 0 14px; color:var(--text); }
+
+  .row { display:flex; gap:10px; }
+  input[type=text] { flex:1; background:var(--panel2); border:1px solid var(--border); color:var(--text);
+    padding:10px 12px; border-radius:8px; font-size:13px; }
+  input[type=number] { width:90px; background:var(--panel2); border:1px solid var(--border); color:var(--text);
+    padding:10px 12px; border-radius:8px; font-size:13px; }
+  button { background:var(--accent); color:#fff; border:none; padding:10px 16px; border-radius:8px;
+    font-size:13px; cursor:pointer; font-weight:600; }
+  button.ghost { background:transparent; border:1px solid var(--border); color:var(--text); }
+  button.small { padding:6px 10px; font-size:12px; }
+  button:disabled { opacity:.5; cursor:default; }
+
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { text-align:left; color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase;
+    letter-spacing:.03em; padding:8px 10px; border-bottom:1px solid var(--border); }
+  td { padding:10px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  a { color:var(--accent); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+
+  .badge { display:inline-block; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600; }
+  .badge.success { background: rgba(56,217,150,.15); color:var(--green); }
+  .badge.failed { background: rgba(255,107,107,.15); color:var(--red); }
+  .badge.pending, .badge.processing { background: rgba(255,184,77,.15); color:var(--amber); }
+  .badge.idle, .badge.done { background: rgba(139,144,163,.15); color:var(--muted); }
+  .badge.discovering, .badge.queued, .badge.submitting { background: rgba(108,123,255,.15); color:var(--accent); }
+
+  .muted { color:var(--muted); }
+  .truncate { max-width: 380px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .domainrow { cursor:pointer; }
+  .domainrow.active td { background: rgba(108,123,255,.06); }
+  .toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+  .toolbar .muted { font-size:12px; }
+  .empty { color:var(--muted); font-size:13px; padding: 20px 0; text-align:center; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🗂 Website Archive Submitter</h1>
+    <div class="sub">Domain discovery → normalization → archival queue → repository</div>
+  </div>
+  <div class="row">
+    <button class="ghost small" id="pauseBtn" onclick="toggleWorker()">Pause Queue</button>
+  </div>
+</header>
+
+<main>
+  <div class="stats" id="stats"></div>
+
+  <div class="card">
+    <h2>Add a domain</h2>
+    <div class="row">
+      <input type="text" id="domainInput" placeholder="example.com or https://example.com">
+      <input type="number" id="maxPages" value="200" title="max pages to crawl">
+      <button onclick="addDomain()">Start Discovery</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <h2 style="margin:0">Domains</h2>
+      <span class="muted" id="domainCount"></span>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Domain</th><th>Status</th><th>URLs</th><th>Success</th><th>Failed</th><th>Pending</th>
+        <th>Last scan</th><th></th>
+      </tr></thead>
+      <tbody id="domainRows"></tbody>
+    </table>
+    <div id="domainsEmpty" class="empty" style="display:none">No domains yet — add one above.</div>
+  </div>
+
+  <div class="card" id="urlsCard" style="display:none">
+    <div class="toolbar">
+      <h2 style="margin:0" id="urlsTitle">URLs</h2>
+      <span class="muted" id="urlsCount"></span>
+    </div>
+    <table>
+      <thead><tr><th>URL</th><th>Source</th><th>Status</th><th>Archive</th><th></th></tr></thead>
+      <tbody id="urlRows"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="toolbar"><h2 style="margin:0">Search Repository</h2></div>
+    <div class="row" style="margin-bottom:14px">
+      <input type="text" id="searchInput" placeholder="Search by domain or URL...">
+      <select id="statusFilter" style="background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:0 10px;">
+        <option value="">Any status</option>
+        <option value="success">Success</option>
+        <option value="failed">Failed</option>
+        <option value="pending">Pending</option>
+      </select>
+      <button class="ghost" onclick="doSearch()">Search</button>
+    </div>
+    <table>
+      <thead><tr><th>Domain</th><th>URL</th><th>Service</th><th>Status</th><th>Archive</th></tr></thead>
+      <tbody id="searchRows"></tbody>
+    </table>
+  </div>
+</main>
+
+<script>
+let activeDomain = null;
+let workerPaused = false;
+
+async function j(url, opts) {
+  const r = await fetch(url, opts);
+  return r.json();
+}
+
+function badge(status) {
+  return `<span class="badge ${status}">${status}</span>`;
+}
+
+function fmtTime(ts) {
+  if (!ts) return '—';
+  return new Date(ts * 1000).toLocaleString();
+}
+
+async function refreshStats() {
+  const s = await j('/api/stats');
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><div class="n">${s.domains}</div><div class="l">Domains</div></div>
+    <div class="stat"><div class="n">${s.total_urls}</div><div class="l">Total URLs</div></div>
+    <div class="stat"><div class="n">${s.queued}</div><div class="l">Queued</div></div>
+    <div class="stat"><div class="n">${s.processing}</div><div class="l">Submitting</div></div>
+    <div class="stat"><div class="n" style="color:var(--green)">${s.success}</div><div class="l">Successful</div></div>
+    <div class="stat"><div class="n" style="color:var(--red)">${s.failed}</div><div class="l">Failed</div></div>
+  `;
+}
+
+async function refreshDomains() {
+  const rows = await j('/api/domains');
+  document.getElementById('domainCount').textContent = rows.length + ' domain(s)';
+  document.getElementById('domainsEmpty').style.display = rows.length ? 'none' : 'block';
+  document.getElementById('domainRows').innerHTML = rows.map(d => `
+    <tr class="domainrow ${activeDomain===d.id?'active':''}" onclick="selectDomain(${d.id}, '${d.domain}')">
+      <td><strong>${d.domain}</strong></td>
+      <td>${badge(d.status)}</td>
+      <td>${d.total_urls}</td>
+      <td style="color:var(--green)">${d.success}</td>
+      <td style="color:var(--red)">${d.failed}</td>
+      <td style="color:var(--amber)">${d.pending}</td>
+      <td class="muted">${fmtTime(d.last_scan_at)}</td>
+      <td><button class="ghost small" onclick="event.stopPropagation(); rescan(${d.id})">Rescan</button></td>
+    </tr>
+  `).join('');
+}
+
+async function selectDomain(id, name) {
+  activeDomain = id;
+  refreshDomains();
+  document.getElementById('urlsCard').style.display = 'block';
+  document.getElementById('urlsTitle').textContent = 'URLs — ' + name;
+  const rows = await j(`/api/domains/${id}/urls`);
+  document.getElementById('urlsCount').textContent = rows.length + ' URL(s)';
+  document.getElementById('urlRows').innerHTML = rows.map(u => `
+    <tr>
+      <td class="truncate" title="${u.normalized_url}">${u.normalized_url}</td>
+      <td class="muted">${u.discovery_source || '—'}</td>
+      <td>${badge(u.latest_status || 'pending')}${u.error_message ? `<div class="muted" style="font-size:11px;margin-top:4px">${u.error_message}</div>` : ''}</td>
+      <td>${u.archive_url ? `<a href="${u.archive_url}" target="_blank">view ↗</a>` : '—'}</td>
+      <td><button class="ghost small" onclick="rearchive(${u.id})">Re-archive</button></td>
+    </tr>
+  `).join('') || '<tr><td colspan="5" class="empty">No URLs discovered yet.</td></tr>';
+}
+
+async function addDomain() {
+  const domain = document.getElementById('domainInput').value.trim();
+  const maxPages = parseInt(document.getElementById('maxPages').value) || 200;
+  if (!domain) return;
+  await j('/api/domains', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({domain, max_pages: maxPages})
+  });
+  document.getElementById('domainInput').value = '';
+  refreshDomains(); refreshStats();
+}
+
+async function rescan(id) {
+  await j(`/api/domains/${id}/rescan`, {method:'POST'});
+  refreshDomains();
+}
+
+async function rearchive(urlId) {
+  await j(`/api/urls/${urlId}/rearchive`, {method:'POST'});
+  if (activeDomain) selectDomain(activeDomain, document.getElementById('urlsTitle').textContent.replace('URLs — ',''));
+}
+
+async function toggleWorker() {
+  workerPaused = !workerPaused;
+  await j(`/api/worker/${workerPaused ? 'pause':'resume'}`, {method:'POST'});
+  document.getElementById('pauseBtn').textContent = workerPaused ? 'Resume Queue' : 'Pause Queue';
+}
+
+async function doSearch() {
+  const q = document.getElementById('searchInput').value.trim();
+  const status = document.getElementById('statusFilter').value;
+  const rows = await j(`/api/search?q=${encodeURIComponent(q)}${status?`&status=${status}`:''}`);
+  document.getElementById('searchRows').innerHTML = rows.map(r => `
+    <tr>
+      <td>${r.domain}</td>
+      <td class="truncate" title="${r.normalized_url}">${r.normalized_url}</td>
+      <td class="muted">${r.latest_service || '—'}</td>
+      <td>${badge(r.latest_status || 'pending')}</td>
+      <td>${r.archive_url ? `<a href="${r.archive_url}" target="_blank">view ↗</a>` : '—'}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="5" class="empty">No matches.</td></tr>';
+}
+
+function tick() {
+  refreshStats();
+  refreshDomains();
+  if (activeDomain) {
+    const name = document.getElementById('urlsTitle').textContent.replace('URLs — ','');
+    selectDomain(activeDomain, name);
+  }
+}
+
+tick();
+setInterval(tick, 2500);
+</script>
+</body>
+</html>
